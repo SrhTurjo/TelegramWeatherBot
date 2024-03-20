@@ -14,7 +14,7 @@ class WeatherApp:
         self.tomorrow = None
 
     def search_for_locations(self):
-        self.event_flag.clear()
+        # self.event_flag.clear()
 
         search = self.search
         g_link = f"http://api.openweathermap.org/geo/1.0/direct?q={search}&limit=5&appid={self.api}"
@@ -25,11 +25,11 @@ class WeatherApp:
 
         if results == []:
             self.names, self.coordinates = None, None
-            self.event_flag.set()
+            # self.event_flag.set()
         else:
             for i,result in enumerate(results):
                 details = ['name', 'state', 'country']
-                name = f"\n{i+1}) "
+                name = ""
                 for detail in details:
                     if detail in result:
                         name += f"{result[detail]}; "
@@ -38,12 +38,12 @@ class WeatherApp:
                 coordinates.append(coordinate)
 
             self.names, self.coordinates = names, coordinates
-            self.event_flag.set()
+            # self.event_flag.set()
 
 
     def get_weather(self, coordinates , unit="metric"):
 
-        self.event_flag.clear()
+        # self.event_flag.clear()
 
         lat, lon = coordinates
 
@@ -77,5 +77,4 @@ class WeatherApp:
 
 
         self.today, self.tomorrow = today, tomorrow
-        self.event_flag.set()
-
+        # self.event_flag.set()
