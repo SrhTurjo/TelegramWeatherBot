@@ -25,7 +25,7 @@ from telegram.ext import (
     )
 
 markup_keyboard = ReplyKeyboardMarkup([['/start','']], is_persistent=True)
-LOCATION, CONFIRM, FORECAST = range(3)
+LOCATION, CONFIRM, UNIT_SWAP = range(3)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
@@ -43,13 +43,13 @@ async def get_location_name(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     source = WeatherApp()
     location = update.message.text
     source.search = location
-    await update.message.reply_text(
+    msg = await update.message.reply_text(
         f"Searching Location: {location}"
     )
     source.search_for_locations()
 
     if source.names is None and source.coordinates is None:
-        await update.message.reply_text(
+        await msg.edit_text(
             f"No location found. Please try naming the location differntly."
         )
         return LOCATION
@@ -62,11 +62,11 @@ async def get_location_name(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     for i, name in enumerate(source.names):
         keyboard.append([InlineKeyboardButton(name, callback_data=i)])
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
+    await msg.edit_text(
         f"Choose the location you meant",
-        reply_markup=reply_markup
+        reply_markup= markup
     )
     return CONFIRM
 
@@ -83,46 +83,68 @@ async def confirm_location_button(update: Update, context: ContextTypes.DEFAULT_
     # Do something with the selected location
     context.user_data['location_name'] = context.user_data['names'][int(selected_location)]
     context.user_data['location_coordinates'] = context.user_data['coordinates'][int(selected_location)]
-    await query.edit_message_text(text=f"Getting weather data of {context.user_data['location_name']}")
-    
-    context.job_queue.run_once(forecast, 0, {
-        'chat_id': update.effective_chat.id,
-        'data': {
-            'location_name': context.user_data['location_name'],
-            'location_coordinates': context.user_data['location_coordinates']
-        }
-    })
 
-async def forecast(context: ContextTypes.DEFAULT_TYPE) -> None:
+    markup = InlineKeyboardMarkup([[InlineKeyboardButton("Show in Celcius", callback_data='C')]])
+    msg = forecast(context)
+
+    await query.edit_message_text(
+        text=msg,
+        reply_markup= markup)
+    
+    return UNIT_SWAP
+
+
+def forecast(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Get the weather data and send it to the user."""
 
-    chat_id = context.job.data['chat_id']
-    data = context.job.data['data']
-    location_name = data['location_name']
-    location_coordinates = data['location_coordinates']
+    location_name = context.user_data['location_name']
+    location_coordinates = context.user_data['location_coordinates']
 
 
     # Get the weather data for the selected location
     app = WeatherApp()
-    app.get_weather(location_coordinates)
+    app.get_weather(location_coordinates, unit = "imperial")
     today = app.today
-    weather_report = "Today's weather: \n"
+    context.user_data['weather'] = today
+    weather_report = f"Today's weather in {location_name}:\n"
     for data in today:
-        weather_report += f"{data['time']}: {data['weather']} {data['temp']}°C\n"
+        weather_report += f"{data['time']}: {data['weather']} {data['temp']}°F\n"
+
+    return weather_report
 
 
-    # Send the weather data to the user
-    await context.bot.send_message(chat_id, f"The weather in {location_name} is: {weather_report}")
+async def unit_swap_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    
+        """Handle button presses."""
+        query = update.callback_query
+        await query.answer()
+    
+        # The callback_data is available in query.data
+        selected_unit = query.data
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """End Conversation by command."""
-    user = update.effective_user
-    await update.message.reply_text(
-        f"Bye! I hope we can talk again some day.",
-        reply_markup= markup_keyboard
-    )
+        location_name = context.user_data['location_name']
+    
+        # Do something with the selected location
+        today = context.user_data['weather']
 
-    return ConversationHandler.END
+
+        weather_report = f"Today's weather in {location_name}:\n"
+
+        if selected_unit == 'C':
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton("Show in Farenheit", callback_data='F')]])
+            for data in today:
+                weather_report += f"{data['time']}: {data['weather']} {round((5/9)*(data['temp']-32), 2)}°C\n"
+        else:
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton("Show in Celcius", callback_data='C')]])
+            for data in today:
+                weather_report += f"{data['time']}: {data['weather']} {data['temp']}°F\n" 
+
+        await query.edit_message_text(
+            text=f"{weather_report}",
+            reply_markup= markup)
+
+        return UNIT_SWAP
+
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(token).build()
@@ -131,9 +153,10 @@ if __name__ == '__main__':
         entry_points=[CommandHandler('start', start)],
         states={
             LOCATION: [MessageHandler(filters.TEXT & (~filters.COMMAND) , get_location_name)],
-            CONFIRM: [CallbackQueryHandler(confirm_location_button)],
+            UNIT_SWAP: [CallbackQueryHandler(unit_swap_button, pattern="^(C|F)$")],
+            CONFIRM: [CallbackQueryHandler(confirm_location_button, pattern="^(\d+)$")],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[CommandHandler('start', start)],
     )
 
     application.add_handler(conv_handler)

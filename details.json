@@ -1,4 +1,5 @@
 {
-    "uid":"",
-    "location":""
+    "location":"",
+    "weather":"",
+    "lastUpdate":""
 }
